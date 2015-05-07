@@ -1,0 +1,124 @@
+#!/usr/bin/env jip
+# Run MarkDuplicates to generate Duplication stats from a set of BAM alignment files with the name format. 
+#
+# Usage:
+#    duplicates_stats.jip -b <bam>...
+#
+# Inputs:
+#  -b, --bam <bam>...    List of bam input files
+#
+
+#%begin pipeline
+import os
+import os.path
+import json
+import sys
+
+
+def checkBamFile(nameBam=None):
+    '''Checks if the BAM file complies Name format Standard SAMPLE_LIBRARY_FLOWCELL_LANE...'''
+    import re
+    fields = re.split('_',nameBam)
+    if fields < 4:
+        return False
+    return True
+
+def getSampleName(nameBam=None):
+    ''' Return sample name from a Bam which complies the name format SAMPLE_LIBRARY_FLOWCELL_LANE...''' 
+    import re 
+    return re.split('_',nameBam)[0]
+
+def getLibraryName(nameBam=None):
+    ''' Return library name from a Bam which complies the name format SAMPLE_LIBRARY_FLOWCELL_LANE...''' 
+    import re
+    return re.split('_',nameBam)[1]
+    
+
+#0.Global variables
+samplesDict = {}
+
+#1.Process al bam files
+for bamFile in args['bam']:
+    pathBamFile = os.path.abspath(bamFile)
+    cleanName = os.path.basename(bamFile)
+
+    if checkBamFile(cleanName):
+        sample = getSampleName(cleanName)
+        library = getLibraryName(cleanName)
+        
+        if sample in samplesDict.keys():
+            if library in samplesDict[sample].keys():
+                samplesDict[sample][library].append(pathBamFile)
+            else:
+                samplesDict[sample][library] = [pathBamFile]
+        else:
+            newLibrary = {}
+            newLibrary[library] = [pathBamFile]
+            samplesDict[sample] = newLibrary
+
+#2.Create Markduplicates job per each set of bams for a given library
+for sample in samplesDict.keys():
+    for library in samplesDict[sample].keys():
+        bamFiles = samplesDict[sample][library]
+        directory = os.path.dirname(bamFiles[0])    
+        bamToCheck = directory + "/" + sample + "." + library + ".merged.bam"
+        metrics = directory  + "/" + sample + "." + library + ".rmdup.stats"
+
+        if len(bamFiles) > 1:
+            bams = " ".join(["INPUT=%s" % b for b in bamFiles])
+
+            #Merging job
+            merged = job("merge." + sample + "." + library, time="12h",threads="5",\
+            log=directory + "/" +  "merge." + sample + "." + library + ".err", \
+            out=directory + "/" +  "merge." + sample + "." + library + ".out").\
+            bash(''' java -Xmx25g -Djava.io.tmpdir=$TMPDIR  -jar /apps/PICARD/1.95/MergeSamFiles.jar \
+                 TMP_DIR=$TMPDIR \
+                 MAX_RECORDS_IN_RAM=1500000 \
+                 SORT_ORDER=coordinate \
+                 USE_THREADING=true \
+                 ASSUME_SORTED=true  \
+                 VALIDATION_STRINGENCY=SILENT \
+                 ''' + bams + ''' \
+                 OUTPUT=''' + bamToCheck,
+                 outfile=bamToCheck)
+        
+            #MarkDuplicates
+            dups = job("rmDup", time="10h",threads="5",\
+            log=directory + "/" +  "rmdup." + sample + "." + library + ".err", \
+            out=directory + "/" +  "rmdup." + sample + "." + library + ".out").\
+            bash(''' java -Xmx25g -Djava.io.tmpdir=$TMPDIR  -jar /apps/PICARD/1.95/MarkDuplicates.jar \
+                 MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=1000 \
+                 MAX_RECORDS_IN_RAM=1500000 \
+                 METRICS_FILE=''' + metrics +''' \
+                 REMOVE_DUPLICATES=false \
+                 ASSUME_SORTED=true  \
+                 VALIDATION_STRINGENCY=SILENT \
+                 CREATE_INDEX=false\
+                 INPUT=''' + bamToCheck + '''\
+                 COMPRESSION_LEVEL=9 \
+                 OUTPUT=/dev/null ''') 
+
+            merged >> dups
+
+        else:     
+            #MarkDuplicates
+            dups = job("rmDup", time="10h",threads="5",\
+            log=directory + "/" +  "rmdup." + sample + "." + library + ".err", \
+            out=directory + "/" +  "rmdup." + sample + "." + library + ".out").\
+            bash(''' java -Xmx25g -Djava.io.tmpdir=$TMPDIR  -jar /apps/PICARD/1.95/MarkDuplicates.jar \
+                 MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=1000 \
+                 MAX_RECORDS_IN_RAM=1500000 \
+                 METRICS_FILE=''' + metrics +''' \
+                 REMOVE_DUPLICATES=false \
+                 ASSUME_SORTED=true  \
+                 VALIDATION_STRINGENCY=SILENT \
+                 CREATE_INDEX=false\
+                 INPUT=''' + bamFiles[0] + '''\
+                 COMPRESSION_LEVEL=9 \
+                 OUTPUT=/dev/null ''') 
+
+
+
+
+
+
