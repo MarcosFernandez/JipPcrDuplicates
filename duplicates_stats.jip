@@ -36,6 +36,9 @@ def getLibraryName(nameBam=None):
 
 #0.Global variables
 samplesDict = {}
+jip_dir = os.path.dirname(os.path.realpath(__file__))
+create_doc = jip_dir + "/create_doc.py"
+
 
 #1.Process al bam files
 for bamFile in args['bam']:
@@ -98,7 +101,13 @@ for sample in samplesDict.keys():
                  COMPRESSION_LEVEL=9 \
                  OUTPUT=/dev/null ''') 
 
-            merged >> dups
+
+            docJsonHtml = job("jsonHtml", time="00:05:00",threads="1",\
+            log=directory + "/" +  "jsonHtml.err", \
+            out=directory + "/" +  "jsonHtml.out").\
+            bash(create_doc + " --dup_stats " + directory + "/*rmdup.stats") 
+
+            merged >> dups >> docJsonHtml
 
         else:     
             #MarkDuplicates
@@ -117,6 +126,12 @@ for sample in samplesDict.keys():
                  COMPRESSION_LEVEL=9 \
                  OUTPUT=/dev/null ''') 
 
+            docJsonHtml = job("jsonHtml", time="00:05:00",threads="1",\
+            log=directory + "/" +  "jsonHtml.err", \
+            out=directory + "/" +  "jsonHtml.out").\
+            bash(create_doc + " --dup_stats " + directory + "/*rmdup.stats") 
+
+            dups >> docJsonHtml
 
 
 

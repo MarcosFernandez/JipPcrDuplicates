@@ -58,6 +58,26 @@ Usage
 
     By default, the script is going to look for jar PicardTools files at ``/apps/PICARD/1.95/`` . Modify it in case is not a valid path for you system.
 
+-------
+Outputs
+-------
+
+Files generated:
+
++----------------------------+-----------------------------------------+
+| File                       | Description                             |
++============================+=========================================+
+|sample.library.rmdup.stats  |MarkDuplicates statistics file, one per  |
+|                            |each sample and library.                 |
++----------------------------+-----------------------------------------+
+|duplicates.html             |HTML document with a summary of PCR      | 
+|                            |Duplicates statistics.                   |
++----------------------------+-----------------------------------------+
+|duplicates.json             |JSON document with a summary of PCR      |
+|                            |Duplicates statistics.                   |
++----------------------------+-----------------------------------------+
+
+
 -----
 Notes
 -----
