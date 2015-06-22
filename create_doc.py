@@ -10,7 +10,7 @@ class CreateDocumentationFiles(object):
     """Class which manages documentation builder"""
 
     def __init__(self):
-        self.file_duplicates = []               #Vector of files from MarkDuplicates stats
+        self.file_duplicates = []               #Vector of files from samtools flagstats output
         self.sampleLibDuplicates = []           #Vector of vector of stats each item: [sample,library,percen_duplication]   
         self.jsonDictionary = {}                #Dictionary to be printed as a json file  
         self.cssContents = []                   #Css Vector of contents
@@ -23,7 +23,7 @@ class CreateDocumentationFiles(object):
         parser -- the argparse parser
         """
         general_group = parser.add_argument_group('Create HTML and JSON Duplicates Report')
-        general_group.add_argument('--dup_stats', dest="files", nargs="+", help='Files of duplicates statistics from MarkDuplicates. \
+        general_group.add_argument('--dup_stats', dest="files", nargs="+", help='Files of duplicates statistics from markdup sambamba. \
                                                                                   One per sample an library. Example  sample_1.library_1.rmdup.stats sample_1.library_2.rmdup.stats sample_2.library_1.rmdup.stats')
 
     def parseArguments(self,args):
@@ -33,30 +33,55 @@ class CreateDocumentationFiles(object):
 
     def parserStatsFiles(self):
         """ Parser duplicates stats to vectors structures """
+
+
         for statsFile in self.file_duplicates:
-            #fieldsName = re.split('.',os.path.basename(statsFile))
             fieldsName = os.path.basename(statsFile).split('.')
             sample = fieldsName[0]
             library = fieldsName[1]
-            duplicates_coefficent = ""
+            total_reads = 0
+            duplicates = 0
+            mapped = 0
+            properly_paired = 0
+            inproper_pairs = 0
             
             #1. PARSE DUPLICATES FILE
             processLine = False        
             
             with open(statsFile, "r") as stFile:
+                row = 0    
                 for line in stFile:
-                    vFields = re.split('\t',line.rstrip('\n'))
-                    if processLine == False and len(vFields) > 1:
-                        if vFields[0] == "LIBRARY":
-                            processLine = True
-                    elif processLine == True:
-                        duplicates_coefficent += vFields[7]
-                        break
-
+                    vFields = re.split(' ',line.rstrip('\n'))
+                   
+                    if row == 0:
+                        total_reads = int(vFields[0])
+                    elif row == 1:
+                        duplicates = int(vFields[0])
+                    elif row == 2:
+                        mapped = int(vFields[0])
+                    elif row == 6:
+                        properly_paired = int(vFields[0])
+                    elif row == 7:
+                        inproper_pairs = int(vFields[0]) - properly_paired
+                       
+                    row += 1
+                    
             #2. APPEND TO GLOBAL VECTOR
-            self.sampleLibDuplicates.append([sample,library,duplicates_coefficent])
+            self.sampleLibDuplicates.append([sample,library,[total_reads,duplicates,mapped,properly_paired,inproper_pairs]])
             keyName = sample + "_" + library
-            self.jsonDictionary[keyName] =  self.sampleLibDuplicates
+            
+            self.jsonDictionary[keyName] =  { 'sample' : sample,
+                                              'library' : library,
+                                              'total_reads' : total_reads,
+                                              'duplicates_reads' : duplicates,
+                                              'percent_duplicates' : (float(duplicates) / float(total_reads)) * 100,
+                                              'mapped_reads' : mapped,
+                                              'percent_mapped' : (float(mapped) / float(total_reads)) * 100,
+                                              'properly_paired' : properly_paired,
+                                              'percent_properly_paired' : (float(properly_paired) / float(total_reads)) * 100,
+                                              'inproper_pairs' : inproper_pairs,
+                                              'percent_inproper_pairs' : (float(inproper_pairs) / float(total_reads)) * 100
+                                            }
 
     def check_parameters(self):
         """Check parameters consistency
@@ -254,7 +279,12 @@ class CreateDocumentationFiles(object):
         '''Add HTML Table'''
         self.cssHtml.append("  <TABLE id=\"hor-zebra\">\n")
         self.cssHtml.append("   <TR>\n")
-	self.cssHtml.append("    <TH scope=\"col\"> SAMPLE </TH> <TH scope=\"col\"> LIBRARY </TH> <TH scope=\"col\"> DUPLICATES COEFFICIENT [0-1] </TH> \n")
+	self.cssHtml.append("    <TH scope=\"col\"> SAMPLE </TH> <TH scope=\"col\"> LIBRARY </TH> \
+                                 <TH scope=\"col\"> Total Reads </TH> \
+                                 <TH scope=\"col\"> Duplicates Reads - %  </TH> \
+                                 <TH scope=\"col\"> Mapped Reads - % </TH> \
+                                 <TH scope=\"col\"> Properly Paired Reads - % </TH> \
+                                 <TH scope=\"col\"> Improperly Paired Read  - % </TH>   \n")
         self.cssHtml.append("   </TR>\n")
 
         isOdd = False
@@ -268,7 +298,11 @@ class CreateDocumentationFiles(object):
                self.cssHtml.append("   <TR>\n")
                isOdd = True
 	
-            self.cssHtml.append("     <TD> " + sampleLibDup[0] + " </TD> <TD> " + sampleLibDup[1] + " </TD> <TD> " + sampleLibDup[2] + " </TD>")
+            self.cssHtml.append("     <TD> " + str(sampleLibDup[0]) + " </TD> <TD> " + str(sampleLibDup[1]) + " </TD> <TD> " + str(sampleLibDup[2][0]) + " </TD>\
+                                 <TD> " + str(sampleLibDup[2][1]) + "  " + str( ( float(sampleLibDup[2][1]) / float(sampleLibDup[2][0]) )*100 ) + "% </TD> \
+                                 <TD> " + str(sampleLibDup[2][2]) + "  " + str( ( float(sampleLibDup[2][2]) / float(sampleLibDup[2][0]) )*100 ) + "% </TD> \
+                                 <TD> " + str(sampleLibDup[2][3]) + "  " + str( ( float(sampleLibDup[2][3]) / float(sampleLibDup[2][0]) )*100 ) + "% </TD> \
+                                 <TD> " + str(sampleLibDup[2][4]) + "  " + str( ( float(sampleLibDup[2][4]) / float(sampleLibDup[2][0]) )*100 ) + "% </TD>")
 	    self.cssHtml.append("   </TR>\n")
 
         self.cssHtml.append("  </TABLE>\n")

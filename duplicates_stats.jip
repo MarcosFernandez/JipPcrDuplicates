@@ -13,7 +13,7 @@ import os
 import os.path
 import json
 import sys
-
+import subprocess
 
 def checkBamFile(nameBam=None):
     '''Checks if the BAM file complies Name format Standard SAMPLE_LIBRARY_FLOWCELL_LANE...'''
@@ -32,6 +32,16 @@ def getLibraryName(nameBam=None):
     ''' Return library name from a Bam which complies the name format SAMPLE_LIBRARY_FLOWCELL_LANE...''' 
     import re
     return re.split('_',nameBam)[1]
+
+def getFlowcellName(nameBam=None):
+    ''' Return flowcell name from a Bam which complies the name format SAMPLE_LIBRARY_FLOWCELL_LANE...''' 
+    import re
+    return re.split('_',nameBam)[2]
+
+def getLaneName(nameBam=None):
+    ''' Return lane name from a Bam which complies the name format SAMPLE_LIBRARY_FLOWCELL_LANE...''' 
+    import re
+    return re.split('_',nameBam)[3]
     
 
 #0.Global variables
@@ -39,6 +49,7 @@ samplesDict = {}
 jip_dir = os.path.dirname(os.path.realpath(__file__))
 create_doc = jip_dir + "/create_doc.py"
 
+os.system('module load SAMBAMBA')
 
 #1.Process al bam files
 for bamFile in args['bam']:
@@ -59,79 +70,89 @@ for bamFile in args['bam']:
             newLibrary[library] = [pathBamFile]
             samplesDict[sample] = newLibrary
 
+
 #2.Create Markduplicates job per each set of bams for a given library
 for sample in samplesDict.keys():
     for library in samplesDict[sample].keys():
         bamFiles = samplesDict[sample][library]
         directory = os.path.dirname(bamFiles[0])    
-        bamToCheck = directory + "/" + sample + "." + library + ".merged.bam"
-        metrics = directory  + "/" + sample + "." + library + ".rmdup.stats"
+        bamToCheck = directory + "/" + sample + "." + library + ".merged.sample.libs.bam"
+        bamDuplicates = directory  + "/" + sample + "." + library + ".rmdup.sample.libs.bam"
+        flagstat = directory  + "/" + sample + "." + library + ".rmdup.sample.libs.flagstat"
 
         if len(bamFiles) > 1:
-            bams = " ".join(["INPUT=%s" % b for b in bamFiles])
+
+            for bFile in bamFiles:
+                flowcell = getFlowcellName(os.path.basename(bFile))
+                lane = getLaneName(os.path.basename(bFile))           
+                laneFlagstat = directory  + "/" + sample + "." + library + "." + flowcell + "." + lane + ".rmdup.lane.flagstat"
+
+                #Flagstats
+                stats = job("flagstat", time="1h",threads="1",\
+                log=directory + "/" +  "flagstat.lane." + sample + "." + library + "." + flowcell + "." + lane + ".err", \
+                out=directory + "/" +  "flagstat.lane." + sample + "." + library + "." + flowcell + "." + lane + ".out").\
+                bash("sambamba flagstat " + bFile + " > " + flagstat, outfile=laneFlagstat)
+
+
+            bams = " ".join(["%s" % b for b in bamFiles])
 
             #Merging job
-            merged = job("merge." + sample + "." + library, time="12h",threads="5",\
-            log=directory + "/" +  "merge." + sample + "." + library + ".err", \
-            out=directory + "/" +  "merge." + sample + "." + library + ".out").\
-            bash(''' java -Xmx25g -Djava.io.tmpdir=$TMPDIR  -jar /apps/PICARD/1.95/MergeSamFiles.jar \
-                 TMP_DIR=$TMPDIR \
-                 MAX_RECORDS_IN_RAM=1500000 \
-                 SORT_ORDER=coordinate \
-                 USE_THREADING=true \
-                 ASSUME_SORTED=true  \
-                 VALIDATION_STRINGENCY=SILENT \
-                 ''' + bams + ''' \
-                 OUTPUT=''' + bamToCheck,
+            merged = job("merge." + sample + "." + library, time="8h",threads="1",temp=True,\
+            log=directory + "/" +  "merge" + sample + "." + library + ".err", \
+            out=directory + "/" +  "merge" + sample + "." + library + ".out").\
+            bash("sambamba merge " + bamToCheck + " " +  bams,
                  outfile=bamToCheck)
-        
+      
             #MarkDuplicates
-            dups = job("rmDup", time="10h",threads="5",\
-            log=directory + "/" +  "rmdup." + sample + "." + library + ".err", \
-            out=directory + "/" +  "rmdup." + sample + "." + library + ".out").\
-            bash(''' java -Xmx25g -Djava.io.tmpdir=$TMPDIR  -jar /apps/PICARD/1.95/MarkDuplicates.jar \
-                 MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=1000 \
-                 MAX_RECORDS_IN_RAM=1500000 \
-                 METRICS_FILE=''' + metrics +''' \
-                 REMOVE_DUPLICATES=false \
-                 ASSUME_SORTED=true  \
-                 VALIDATION_STRINGENCY=SILENT \
-                 CREATE_INDEX=false\
-                 INPUT=''' + bamToCheck + '''\
-                 COMPRESSION_LEVEL=9 \
-                 OUTPUT=/dev/null ''') 
+            dups = job("rmDup", time="3h",threads="1",\
+            log=directory + "/" +  "rmdup" + sample + "." + library + ".err",temp=True, \
+            out=directory + "/" +  "rmdup" + sample + "." + library + ".out").\
+            bash("sambamba markdup --tmpdir=$TMPDIR " +  bamToCheck + " " + bamDuplicates, outfile=bamDuplicates) 
 
+            #Flagstats
+            stats = job("flagstat", time="1h",threads="1",\
+            log=directory + "/" +  "flagstat" + sample + "." + library + ".err", \
+            out=directory + "/" +  "flagstat" + sample + "." + library + ".out").\
+            bash("sambamba flagstat " + bamDuplicates + " > " + flagstat, outfile=flagstat)
 
+            #HTML Documentation and JSON Creation
             docJsonHtml = job("jsonHtml", time="00:05:00",threads="1",\
             log=directory + "/" +  "jsonHtml.err", \
             out=directory + "/" +  "jsonHtml.out").\
-            bash(create_doc + " --dup_stats " + directory + "/*rmdup.stats") 
+            bash(create_doc + " --dup_stats " + directory + "/*rmdup.sample.libs.flagstat") 
 
-            merged >> dups >> docJsonHtml
+            merged >> dups >> stats >> docJsonHtml
+
 
         else:     
             #MarkDuplicates
-            dups = job("rmDup", time="10h",threads="5",\
-            log=directory + "/" +  "rmdup." + sample + "." + library + ".err", \
+            dups = job("rmDup", time="3h",threads="1",\
+            log=directory + "/" +  "rmdup." + sample + "." + library + ".err",temp=True, \
             out=directory + "/" +  "rmdup." + sample + "." + library + ".out").\
-            bash(''' java -Xmx25g -Djava.io.tmpdir=$TMPDIR  -jar /apps/PICARD/1.95/MarkDuplicates.jar \
-                 MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=1000 \
-                 MAX_RECORDS_IN_RAM=1500000 \
-                 METRICS_FILE=''' + metrics +''' \
-                 REMOVE_DUPLICATES=false \
-                 ASSUME_SORTED=true  \
-                 VALIDATION_STRINGENCY=SILENT \
-                 CREATE_INDEX=false\
-                 INPUT=''' + bamFiles[0] + '''\
-                 COMPRESSION_LEVEL=9 \
-                 OUTPUT=/dev/null ''') 
+            bash("sambamba markdup --tmpdir=$TMPDIR " +  bamFiles[0] + " " + bamDuplicates, outfile=bamDuplicates) 
 
+            #Flagstats
+            flowcell = getFlowcellName(os.path.basename(bamFiles[0]))
+            lane = getLaneName(os.path.basename(bamFiles[0])) 
+            laneFlagstat = directory  + "/" + sample + "." + library + "." + flowcell + "." + lane + ".rmdup.lane.flagstat"
+            
+            stats = job("flagstat", time="1h",threads="1",\
+            log=directory + "/" +  "flagstat." + sample + "." + library + ".err", \
+            out=directory + "/" +  "flagstat." + sample + "." + library + ".out").\
+            bash("sambamba flagstat " + bamDuplicates + " > " + flagstat + "; cp " + flagstat + " " + laneFlagstat, outfile=flagstat)
+
+            #HTML Documentation and JSON Creation
             docJsonHtml = job("jsonHtml", time="00:05:00",threads="1",\
             log=directory + "/" +  "jsonHtml.err", \
             out=directory + "/" +  "jsonHtml.out").\
-            bash(create_doc + " --dup_stats " + directory + "/*rmdup.stats") 
+            bash(create_doc + " --dup_stats " + directory + "/*rmdup.sample.libs.flagstat") 
 
-            dups >> docJsonHtml
+            dups >> stats >> docJsonHtml
+
+
+
+
+
 
 
 

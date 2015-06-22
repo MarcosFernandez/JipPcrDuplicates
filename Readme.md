@@ -24,6 +24,8 @@ Documentation can be found at [JIP PCR Duplicates] (http://statgen.cnag.cat/docj
 Changelog:
 ==========
 
+    0.1 Change Picardtools per sambamba tools
+        Added limsRnaSeq script to upload RNA Seq Pipeline results to CNAG Lims Database.
     0.0 Initial Release  
 
 
