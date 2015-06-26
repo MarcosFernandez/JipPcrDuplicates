@@ -106,9 +106,9 @@ It also looks for *JSON Duplicates statistics file* (file *duplicates.json*) to 
 Download
 --------
 
-Download the script from `https://github.com/MarcosFernandez/JipPcrDuplicates/limsRnaSeq/limsRnaSeq.py`_ and just run it.
+Download the script from `https://github.com/MarcosFernandez/JipPcrDuplicates/tree/master/limsRnaSeq`_ and just run it.
 
-.. _https://github.com/MarcosFernandez/JipPcrDuplicates/limsRnaSeq/limsRnaSeq.py: https://github.com/MarcosFernandez/JipPcrDuplicates/limsRnaSeq/limsRnaSeq.py
+.. _https://github.com/MarcosFernandez/JipPcrDuplicates/tree/master/limsRnaSeq: https://github.com/MarcosFernandez/JipPcrDuplicates/tree/master/limsRnaSeq
 
 -----
 Usage

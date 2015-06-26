@@ -42,8 +42,6 @@ def getLaneName(nameBam=None):
     ''' Return lane name from a Bam which complies the name format SAMPLE_LIBRARY_FLOWCELL_LANE...''' 
     import re
     return re.split('_',nameBam)[3]
-
-
     
 
 #0.Global variables
