@@ -113,6 +113,8 @@ class LimsRnaSeq():
         """
         general_group = parser.add_argument_group('Input Files')
         general_group.add_argument('-d', dest="directory", help='RNASeq mapping directory.')
+        config_group = parser.add_argument_group('Configuration')
+        config_group.add_argument('--no_filter', dest="no_filter",action="store_true", default=False,help='Do not use filtered files for building stats.')
        
    
     def checkFileName(self,nameJson=None,justLibrary = False,separator='_'):
@@ -576,9 +578,19 @@ parser = argparse.ArgumentParser(prog="limsRnaSeq",description="LIMS Rna Pipelin
 configManager.register_parameters(parser)
 args = parser.parse_args()
 
+#2.2 Select which mapping stats to use for build the report. Stats comming from filtered bam file or raw bam file.
+gtf_stats_search = "/*.filtered.gtf.stats.json"
+gtf_counts_txt = "/*.filtered.gtf.counts.txt"
+
+if args.no_filter:
+    gtf_stats_search = "/*[0-9].gtf.stats.json"
+    gtf_counts_txt = "/*[0-9].gtf.counts.txt"
+
+
 #3.1 Get files from RNASeq Mapping Directory
-laneGtfStats = glob.glob(args.directory + "/*.filtered.gtf.stats.json")
-laneGeneCounts = glob.glob(args.directory + "/*.filtered.gtf.counts.txt")
+laneGtfStats = sorted(glob.glob(args.directory + gtf_stats_search))
+laneGeneCounts = sorted(glob.glob(args.directory + gtf_counts_txt))
+
 rmDupsFiles = glob.glob(args.directory + "/*.rmdup.lane.flagstat")
 
 rmDupsLibrary = {}
